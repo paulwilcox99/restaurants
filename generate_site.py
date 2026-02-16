@@ -37,7 +37,9 @@ CUISINE_COLORS = {
     'bbq': '#d35400',
     'pizza': '#e74c3c',
     'sushi': '#e91e63',
-    'fusion': '#95a5a6'
+    'fusion': '#95a5a6',
+    'bakery': '#8b4513',
+    'cafe': '#6b4423'
 }
 
 
@@ -99,25 +101,25 @@ def get_all_restaurants(db_path):
 
     # Parse JSON fields
     for restaurant in restaurants:
-        restaurant['signature_dishes_list'] = parse_json_field(restaurant['signature_dishes'])
-        restaurant['dietary_accommodations_list'] = parse_json_field(restaurant['dietary_accommodations'])
-        restaurant['awards_list'] = parse_json_field(restaurant['awards'])
-        restaurant['similar_restaurants_list'] = parse_json_field(restaurant['similar_restaurants'])
-        restaurant['llm_categories_list'] = parse_json_field(restaurant['llm_categories'])
-        restaurant['user_categories_list'] = parse_json_field(restaurant['user_categories'])
+        restaurant['signature_dishes_list'] = parse_json_field(restaurant.get('signature_dishes'))
+        restaurant['dietary_accommodations_list'] = parse_json_field(restaurant.get('dietary_accommodations'))
+        restaurant['awards_list'] = parse_json_field(restaurant.get('awards'))
+        restaurant['similar_restaurants_list'] = parse_json_field(restaurant.get('similar_restaurants'))
+        restaurant['llm_categories_list'] = parse_json_field(restaurant.get('llm_categories'))
+        restaurant['user_categories_list'] = parse_json_field(restaurant.get('user_categories'))
 
     return restaurants
 
 
 # HTML Templates
-def html_header(title, breadcrumbs=None, home_link="index.html"):
-    """Generate HTML header."""
+def html_header(title, breadcrumbs=None, base=""):
+    """Generate HTML header. base should be '../' for pages in subdirectories."""
     bc_html = ""
     if breadcrumbs:
-        bc_parts = [f'<a href="{home_link}">Home</a>']
+        bc_parts = [f'<a href="{base}index.html">Home</a>']
         for name, link in breadcrumbs:
             if link:
-                bc_parts.append(f'<a href="{link}">{escape(name)}</a>')
+                bc_parts.append(f'<a href="{base}{link}">{escape(name)}</a>')
             else:
                 bc_parts.append(escape(name))
         bc_html = f'<nav class="breadcrumbs">{" → ".join(bc_parts)}</nav>'
@@ -127,59 +129,88 @@ def html_header(title, breadcrumbs=None, home_link="index.html"):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{escape(title)} - Restaurant Tracker</title>
+    <title>{escape(title)} - Paul's Restaurants</title>
     <style>
         :root {{
-            --bg: #faf8f5;
-            --bg-card: #ffffff;
-            --text: #2c2c2c;
-            --text-muted: #666666;
-            --accent: #e74c3c;
-            --accent-hover: #c0392b;
-            --link: #3498db;
-            --link-hover: #2980b9;
-            --border: #d4cfc7;
-            --border-light: #e8e4dd;
+            --bg: #ffffff;
+            --bg-card: #f8f9fa;
+            --text: #2c3e50;
+            --text-muted: #7f8c8d;
+            --accent: #d97706;
+            --accent-hover: #b45309;
+            --link: #d97706;
+            --link-hover: #b45309;
+            --border: #e0e0e0;
+            --border-light: #f0f0f0;
         }}
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: Georgia, serif;
             background: var(--bg);
             color: var(--text);
-            line-height: 1.7;
+            line-height: 1.6;
             padding: 2rem;
             max-width: 1200px;
             margin: 0 auto;
         }}
+        .back-to-collections {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 0.85rem;
+            margin-bottom: 1.5rem;
+        }}
+        .back-to-collections a {{
+            color: var(--text-muted);
+            text-decoration: none;
+        }}
+        .back-to-collections a:hover {{
+            color: var(--accent);
+        }}
         a {{ color: var(--link); text-decoration: none; }}
         a:hover {{ color: var(--link-hover); text-decoration: underline; }}
-        h1 {{
-            color: var(--text);
-            margin-bottom: 1.5rem;
-            font-size: 2.5rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-            border-bottom: 3px solid var(--accent);
+        h1 {{ 
+            color: var(--accent); 
+            margin-bottom: 0.5rem; 
+            font-size: 2.5rem; 
+            font-weight: normal;
+            text-align: center;
+        }}
+        .subtitle {{
+            text-align: center;
+            color: var(--text-muted);
+            font-style: italic;
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+        }}
+        h2 {{ 
+            color: var(--text); 
+            margin: 2.5rem 0 1.5rem; 
+            font-size: 1.5rem; 
+            font-weight: normal;
             padding-bottom: 0.75rem;
-        }}
-        h2 {{
-            color: var(--text);
-            margin: 2rem 0 1rem;
-            font-size: 1.5rem;
-            font-weight: 600;
             border-bottom: 2px solid var(--border);
-            padding-bottom: 0.5rem;
         }}
-        h3 {{ color: var(--text); margin: 1.25rem 0 0.75rem; font-size: 1.2rem; font-weight: 600; }}
-        .breadcrumbs {{ margin-bottom: 2rem; color: var(--text-muted); font-size: 0.9rem; }}
-        .breadcrumbs a {{ color: var(--link); }}
+        h3 {{ color: var(--text); margin: 1.25rem 0 0.75rem; font-size: 1.1rem; font-weight: 600; }}
+        .breadcrumbs {{ 
+            margin-bottom: 2rem; 
+            color: var(--text-muted); 
+            font-size: 0.9rem; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 1rem;
+            background: var(--bg-card);
+            border-radius: 8px;
+        }}
+        .breadcrumbs a {{ color: var(--accent); }}
         .card {{
             background: var(--bg-card);
             padding: 2rem;
             margin-bottom: 1.5rem;
-            border: 1px solid var(--border-light);
+            border: 2px solid var(--border);
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+            transition: all 0.2s ease;
+        }}
+        .card:hover {{
+            border-color: var(--accent);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }}
         .restaurant-grid {{
             display: grid;
@@ -189,24 +220,28 @@ def html_header(title, breadcrumbs=None, home_link="index.html"):
         .restaurant-card {{
             background: var(--bg-card);
             padding: 1.5rem;
-            border: 1px solid var(--border-light);
+            border: 2px solid var(--border);
             border-radius: 8px;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: all 0.2s ease;
         }}
-        .restaurant-card:hover {{ transform: translateY(-2px); box-shadow: 0 4px 12px rgba(231,76,60,0.1); }}
-        .restaurant-card h3 {{ margin: 0 0 0.5rem; font-size: 1.1rem; font-weight: 700; }}
+        .restaurant-card:hover {{ 
+            border-color: var(--accent); 
+            box-shadow: 0 4px 12px rgba(217,119,6,0.1);
+            transform: translateY(-2px);
+        }}
+        .restaurant-card h3 {{ margin: 0 0 0.5rem; font-size: 1.05rem; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
         .restaurant-card h3 a {{ text-decoration: none; color: var(--text); }}
         .restaurant-card h3 a:hover {{ color: var(--accent); }}
-        .restaurant-card .location {{ color: var(--text-muted); font-size: 0.95rem; margin-bottom: 0.75rem; }}
-        .restaurant-card .meta {{ font-size: 0.9rem; color: var(--text-muted); margin-top: 0.75rem; }}
-        .rating {{ color: var(--accent); font-weight: 600; }}
-        .status {{
-            display: inline-block;
-            padding: 0.2rem 0.6rem;
-            font-size: 0.75rem;
+        .restaurant-card .location {{ color: var(--text-muted); font-size: 0.95rem; font-style: italic; }}
+        .restaurant-card .meta {{ font-size: 0.85rem; color: var(--text-muted); margin-top: 0.75rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
+        .rating {{ color: var(--accent); }}
+        .status {{ 
+            display: inline-block; 
+            padding: 0.2rem 0.6rem; 
+            font-size: 0.7rem; 
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            font-weight: 600;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             border-radius: 4px;
         }}
         .status.visited {{ background: #d4edda; color: #155724; }}
@@ -215,25 +250,27 @@ def html_header(title, breadcrumbs=None, home_link="index.html"):
             display: inline-block;
             color: white;
             padding: 0.2rem 0.6rem;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             margin-right: 0.5rem;
             border-radius: 4px;
             font-weight: 500;
             text-transform: capitalize;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }}
         .price-badge {{
             display: inline-block;
             background: #95a5a6;
             color: white;
             padding: 0.2rem 0.5rem;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             border-radius: 4px;
             font-weight: 600;
             margin-left: 0.5rem;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }}
         .tag {{
             display: inline-block;
-            background: var(--bg);
+            background: var(--bg-card);
             color: var(--text-muted);
             padding: 0.3rem 0.8rem;
             font-size: 0.85rem;
@@ -252,33 +289,33 @@ def html_header(title, breadcrumbs=None, home_link="index.html"):
         .nav-section {{
             background: var(--bg-card);
             padding: 1.5rem;
-            border: 1px solid var(--border-light);
+            border: 2px solid var(--border);
             border-radius: 8px;
         }}
-        .nav-section h3 {{ margin-bottom: 1rem; color: var(--accent); font-size: 1rem; font-weight: 700; }}
+        .nav-section h3 {{ margin-bottom: 1rem; color: var(--accent); font-size: 1rem; font-weight: 600; }}
         .nav-section ul {{ list-style: none; }}
         .nav-section li {{ margin: 0.5rem 0; font-size: 0.95rem; }}
         .nav-section a {{ text-decoration: none; }}
         .nav-section a:hover {{ text-decoration: underline; }}
         .stats {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
             margin-bottom: 2.5rem;
         }}
         .stat {{
             background: var(--bg-card);
-            padding: 1.5rem;
+            padding: 1.25rem;
             text-align: center;
-            border: 1px solid var(--border-light);
+            border: 2px solid var(--border);
             border-radius: 8px;
         }}
-        .stat-value {{ font-size: 2.5rem; color: var(--accent); font-weight: 700; }}
-        .stat-label {{ font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem; }}
+        .stat-value {{ font-size: 2rem; color: var(--accent); font-weight: normal; font-family: Georgia, serif; }}
+        .stat-label {{ font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
         .timeline-year {{
             margin-bottom: 3rem;
             padding-bottom: 2rem;
-            border-bottom: 2px solid var(--border-light);
+            border-bottom: 2px solid var(--border);
         }}
         .timeline-year h2 {{
             color: var(--accent);
@@ -294,13 +331,14 @@ def html_header(title, breadcrumbs=None, home_link="index.html"):
             font-weight: 600;
         }}
         dl {{ margin: 1.25rem 0; }}
-        dt {{ color: var(--text-muted); font-size: 0.85rem; margin-top: 1rem; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; }}
+        dt {{ color: var(--text-muted); font-size: 0.85rem; margin-top: 1rem; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
         dd {{ margin-left: 0; margin-top: 0.5rem; }}
         ul.dish-list {{ margin-left: 1.5rem; line-height: 1.8; }}
         ul.dish-list li {{ margin: 0.25rem 0; }}
     </style>
 </head>
 <body>
+<div class="back-to-collections"><a href="https://pauls-collections.vercel.app">← All Collections</a></div>
 {bc_html}
 <h1>{escape(title)}</h1>
 '''
@@ -310,7 +348,7 @@ def html_footer():
     """Generate HTML footer."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     return f'''
-<footer style="margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; text-align: center;">
+<footer style="margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
     Generated on {timestamp}
 </footer>
 </body>
@@ -323,63 +361,63 @@ def generate_restaurant_page(restaurant, output_dir):
     slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
     filepath = os.path.join(output_dir, "restaurants", f"{slug}.html")
 
-    html = html_header(restaurant['restaurant_name'], [("Restaurants", "../restaurants.html"), (restaurant['restaurant_name'], None)], home_link="../index.html")
+    html = html_header(restaurant['restaurant_name'], [("Restaurants", "restaurants.html"), (restaurant['restaurant_name'], None)], base="../")
 
     html += '<div class="card">'
-    html += f'<p class="location" style="font-size: 1.1rem; color: var(--text-muted); margin-bottom: 1rem;">📍 {escape(restaurant["location"])}</p>'
+    html += f'<p class="location" style="font-size: 1.1rem; color: var(--text-muted); margin-bottom: 1rem; font-style: italic;">📍 {escape(restaurant["location"] or "Unknown")}</p>'
 
     # Cuisine, status and rating
     html += '<p style="margin: 1rem 0;">'
-    if restaurant['cuisine']:
+    if restaurant.get('cuisine'):
         cuisine_color = get_cuisine_color(restaurant['cuisine'])
         html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant["cuisine"])}</span>'
 
-    status_class = restaurant['visit_status']
+    status_class = restaurant.get('visit_status', 'want_to_visit')
     status_text = "Visited" if status_class == "visited" else "Want to Visit"
     html += f' <span class="status {status_class}">{status_text}</span>'
 
-    if restaurant['price_range']:
+    if restaurant.get('price_range'):
         html += f' <span class="price-badge">{escape(restaurant["price_range"])}</span>'
 
-    if restaurant['rating']:
+    if restaurant.get('rating'):
         html += f' <span class="rating">{"★" * restaurant["rating"]}{"☆" * (10 - restaurant["rating"])}</span> {restaurant["rating"]}/10'
     html += '</p>'
 
     html += '<dl>'
 
-    if restaurant['date_visited']:
+    if restaurant.get('date_visited'):
         html += f'<dt>Date Visited</dt><dd>{escape(restaurant["date_visited"])}</dd>'
 
-    if restaurant['full_address']:
+    if restaurant.get('full_address'):
         html += f'<dt>Address</dt><dd>{escape(restaurant["full_address"])}</dd>'
 
-    if restaurant['phone_number']:
+    if restaurant.get('phone_number'):
         html += f'<dt>Phone</dt><dd>{escape(restaurant["phone_number"])}</dd>'
 
-    if restaurant['website']:
+    if restaurant.get('website'):
         html += f'<dt>Website</dt><dd><a href="{escape(restaurant["website"])}" target="_blank">{escape(restaurant["website"])}</a></dd>'
 
-    if restaurant['hours_summary']:
+    if restaurant.get('hours_summary'):
         html += f'<dt>Hours</dt><dd>{escape(restaurant["hours_summary"])}</dd>'
 
-    if restaurant['restaurant_type']:
+    if restaurant.get('restaurant_type'):
         html += f'<dt>Type</dt><dd>{escape(restaurant["restaurant_type"])}</dd>'
 
-    if restaurant['chef_owner']:
+    if restaurant.get('chef_owner'):
         html += f'<dt>Chef/Owner</dt><dd>{escape(restaurant["chef_owner"])}</dd>'
 
-    if restaurant['established_year']:
+    if restaurant.get('established_year'):
         html += f'<dt>Established</dt><dd>{restaurant["established_year"]}</dd>'
 
-    if restaurant['reservations_info']:
+    if restaurant.get('reservations_info'):
         html += f'<dt>Reservations</dt><dd>{escape(restaurant["reservations_info"])}</dd>'
 
-    if restaurant['dress_code']:
+    if restaurant.get('dress_code'):
         html += f'<dt>Dress Code</dt><dd>{escape(restaurant["dress_code"])}</dd>'
 
     html += '</dl>'
 
-    if restaurant['cuisine_details']:
+    if restaurant.get('cuisine_details'):
         html += f'<h2>Cuisine</h2><p>{escape(restaurant["cuisine_details"])}</p>'
 
     if restaurant['signature_dishes_list']:
@@ -393,10 +431,10 @@ def generate_restaurant_page(restaurant, output_dir):
         html += ", ".join(escape(d) for d in restaurant['dietary_accommodations_list'])
         html += '</p>'
 
-    if restaurant['atmosphere']:
+    if restaurant.get('atmosphere'):
         html += f'<h2>Atmosphere</h2><p>{escape(restaurant["atmosphere"])}</p>'
 
-    if restaurant['reviews_summary']:
+    if restaurant.get('reviews_summary'):
         html += f'<h2>Reviews</h2><p>{escape(restaurant["reviews_summary"])}</p>'
 
     if restaurant['awards_list']:
@@ -418,10 +456,10 @@ def generate_restaurant_page(restaurant, output_dir):
             html += f'<a href="../categories/{cat_slug}.html" class="tag">{escape(cat)}</a>'
         html += '</p>'
 
-    if restaurant['personal_notes']:
+    if restaurant.get('personal_notes'):
         html += f'<h2>Personal Notes</h2><p>{escape(restaurant["personal_notes"])}</p>'
 
-    html += f'<p style="margin-top: 1.5rem; font-size: 0.85rem; color: var(--text-muted);">Added: {restaurant["date_added"][:10]}</p>'
+    html += f'<p style="margin-top: 1.5rem; font-size: 0.85rem; color: var(--text-muted); font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', sans-serif;">Added: {restaurant["date_added"][:10]}</p>'
 
     html += '</div>'
     html += html_footer()
@@ -438,7 +476,7 @@ def generate_list_page(title, items, output_path, breadcrumbs, intro=""):
     html = html_header(title, breadcrumbs)
 
     if intro:
-        html += f'<p style="margin-bottom: 1.5rem; color: var(--text-muted);">{intro}</p>'
+        html += f'<p class="subtitle">{intro}</p>'
 
     html += '<ul style="list-style: none; columns: 2; column-gap: 2rem;">'
     for name, link, count in sorted(items, key=lambda x: x[0].lower()):
@@ -452,13 +490,13 @@ def generate_list_page(title, items, output_path, breadcrumbs, intro=""):
         f.write(html)
 
 
-def generate_group_page(title, restaurants, output_path, breadcrumbs, home_link="index.html"):
+def generate_group_page(title, restaurants, output_path, breadcrumbs, base="../"):
     """Generate a page showing a group of restaurants."""
-    html = html_header(title, breadcrumbs, home_link=home_link)
+    html = html_header(title, breadcrumbs, base=base)
 
-    visited_count = sum(1 for r in restaurants if r['visit_status'] == 'visited')
+    visited_count = sum(1 for r in restaurants if r.get('visit_status') == 'visited')
     wishlist_count = len(restaurants) - visited_count
-    rated_restaurants = [r for r in restaurants if r['rating']]
+    rated_restaurants = [r for r in restaurants if r.get('rating')]
     avg_rating = sum(r['rating'] for r in rated_restaurants) / len(rated_restaurants) if rated_restaurants else 0
 
     html += f'''<div class="stats">
@@ -473,18 +511,18 @@ def generate_group_page(title, restaurants, output_path, breadcrumbs, home_link=
         slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
 
         html += f'''<div class="restaurant-card">
-            <h3><a href="../restaurants/{slug}.html">{escape(restaurant['restaurant_name'])}</a></h3>
-            <p class="location">📍 {escape(restaurant['location'])}</p>
+            <h3><a href="{base}restaurants/{slug}.html">{escape(restaurant['restaurant_name'])}</a></h3>
+            <p class="location">📍 {escape(restaurant.get('location') or 'Unknown')}</p>
             <p class="meta">'''
 
-        if restaurant['cuisine']:
+        if restaurant.get('cuisine'):
             cuisine_color = get_cuisine_color(restaurant['cuisine'])
             html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant["cuisine"])}</span>'
 
-        if restaurant['rating']:
+        if restaurant.get('rating'):
             html += f' <span class="rating">{"★" * restaurant["rating"]}</span>'
 
-        if restaurant['price_range']:
+        if restaurant.get('price_range'):
             html += f' <span class="price-badge">{escape(restaurant["price_range"])}</span>'
 
         html += '</p></div>'
@@ -500,10 +538,11 @@ def generate_group_page(title, restaurants, output_path, breadcrumbs, home_link=
 def generate_timeline(restaurants, output_dir):
     """Generate timeline view grouped by year and month."""
     html = html_header("Timeline", [("Timeline", None)])
+    html += '<p class="subtitle">Visits organized by date</p>'
 
     # Separate visited restaurants with dates from wishlist
-    visited_restaurants = [r for r in restaurants if r['visit_status'] == 'visited' and r['date_visited']]
-    wishlist_restaurants = [r for r in restaurants if r['visit_status'] == 'want_to_visit']
+    visited_restaurants = [r for r in restaurants if r.get('visit_status') == 'visited' and r.get('date_visited')]
+    wishlist_restaurants = [r for r in restaurants if r.get('visit_status') == 'want_to_visit']
 
     # Group by year and month
     timeline = defaultdict(lambda: defaultdict(list))
@@ -511,7 +550,7 @@ def generate_timeline(restaurants, output_dir):
         try:
             date = datetime.fromisoformat(restaurant['date_visited'])
             year = date.year
-            month = date.strftime('%B')  # Full month name
+            month = date.strftime('%B')
             timeline[year][month].append(restaurant)
         except:
             pass
@@ -523,11 +562,11 @@ def generate_timeline(restaurants, output_dir):
         html += '<div class="restaurant-grid">'
         for restaurant in sorted(wishlist_restaurants, key=lambda r: r['restaurant_name'].lower()):
             slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-            cuisine_color = get_cuisine_color(restaurant['cuisine'])
+            cuisine_color = get_cuisine_color(restaurant.get('cuisine'))
             html += f'''<div class="restaurant-card">
                 <h3><a href="restaurants/{slug}.html">{escape(restaurant['restaurant_name'])}</a></h3>
-                <p class="location">📍 {escape(restaurant['location'])}</p>
-                <p class="meta"><span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant['cuisine'])}</span></p>
+                <p class="location">📍 {escape(restaurant.get('location') or 'Unknown')}</p>
+                <p class="meta"><span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant.get('cuisine') or 'Unknown')}</span></p>
             </div>'''
         html += '</div></div>'
 
@@ -535,7 +574,6 @@ def generate_timeline(restaurants, output_dir):
     for year in sorted(timeline.keys(), reverse=True):
         html += f'<div class="timeline-year"><h2>{year}</h2>'
 
-        # Month sections within year
         month_order = ['January', 'February', 'March', 'April', 'May', 'June',
                       'July', 'August', 'September', 'October', 'November', 'December']
 
@@ -549,17 +587,17 @@ def generate_timeline(restaurants, output_dir):
 
             for restaurant in sorted(month_restaurants, key=lambda r: r['date_visited'], reverse=True):
                 slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-                cuisine_color = get_cuisine_color(restaurant['cuisine'])
+                cuisine_color = get_cuisine_color(restaurant.get('cuisine'))
                 html += f'''<div class="restaurant-card">
                     <h3><a href="restaurants/{slug}.html">{escape(restaurant['restaurant_name'])}</a></h3>
-                    <p class="location">📍 {escape(restaurant['location'])}</p>'''
+                    <p class="location">📍 {escape(restaurant.get('location') or 'Unknown')}</p>'''
 
-                if restaurant['date_visited']:
+                if restaurant.get('date_visited'):
                     html += f'<p class="location">📅 {escape(restaurant["date_visited"])}</p>'
 
                 html += '<p class="meta">'
-                html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant["cuisine"])}</span>'
-                if restaurant['rating']:
+                html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant.get("cuisine") or "Unknown")}</span>'
+                if restaurant.get('rating'):
                     html += f' <span class="rating">{"★" * restaurant["rating"]}</span> {restaurant["rating"]}/10'
                 html += '</p></div>'
 
@@ -577,8 +615,10 @@ def generate_restaurants_index(restaurants, output_dir):
     """Generate all restaurants index page."""
     html = html_header("All Restaurants", [("All Restaurants", None)])
 
-    visited_count = sum(1 for r in restaurants if r['visit_status'] == 'visited')
+    visited_count = sum(1 for r in restaurants if r.get('visit_status') == 'visited')
     wishlist_count = len(restaurants) - visited_count
+
+    html += f'<p class="subtitle">{len(restaurants)} restaurants tracked</p>'
 
     html += f'''<div class="stats">
         <div class="stat"><div class="stat-value">{len(restaurants)}</div><div class="stat-label">Total</div></div>
@@ -589,20 +629,21 @@ def generate_restaurants_index(restaurants, output_dir):
     html += '<div class="restaurant-grid">'
     for restaurant in sorted(restaurants, key=lambda r: r['restaurant_name'].lower()):
         slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-        cuisine_color = get_cuisine_color(restaurant['cuisine'])
+        cuisine_color = get_cuisine_color(restaurant.get('cuisine'))
 
         html += f'''<div class="restaurant-card">
             <h3><a href="restaurants/{slug}.html">{escape(restaurant['restaurant_name'])}</a></h3>
-            <p class="location">📍 {escape(restaurant['location'])}</p>
+            <p class="location">📍 {escape(restaurant.get('location') or 'Unknown')}</p>
             <p class="meta">'''
 
-        html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant["cuisine"])}</span>'
+        if restaurant.get('cuisine'):
+            html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant["cuisine"])}</span>'
 
-        status_class = restaurant['visit_status']
+        status_class = restaurant.get('visit_status', 'want_to_visit')
         status_text = "Visited" if status_class == "visited" else "Wishlist"
         html += f' <span class="status {status_class}">{status_text}</span>'
 
-        if restaurant['rating']:
+        if restaurant.get('rating'):
             html += f' <span class="rating">{"★" * restaurant["rating"]}</span>'
 
         html += '</p></div>'
@@ -617,8 +658,7 @@ def generate_restaurants_index(restaurants, output_dir):
 def generate_price_ranges_page(restaurants, price_ranges_index, output_dir):
     """Generate price ranges overview page."""
     html = html_header("By Price Range", [("Price Ranges", None)])
-
-    html += '<p style="margin-bottom: 1.5rem; color: var(--text-muted);">Browse restaurants by price range</p>'
+    html += '<p class="subtitle">Browse restaurants by price range</p>'
 
     for price_range in ['$', '$$', '$$$', '$$$$']:
         if price_range not in price_ranges_index:
@@ -630,16 +670,17 @@ def generate_price_ranges_page(restaurants, price_ranges_index, output_dir):
 
         for restaurant in sorted(price_ranges_index[price_range], key=lambda r: r['restaurant_name'].lower()):
             slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-            cuisine_color = get_cuisine_color(restaurant['cuisine'])
+            cuisine_color = get_cuisine_color(restaurant.get('cuisine'))
 
             html += f'''<div class="restaurant-card">
                 <h3><a href="restaurants/{slug}.html">{escape(restaurant['restaurant_name'])}</a></h3>
-                <p class="location">📍 {escape(restaurant['location'])}</p>
+                <p class="location">📍 {escape(restaurant.get('location') or 'Unknown')}</p>
                 <p class="meta">'''
 
-            html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant["cuisine"])}</span>'
+            if restaurant.get('cuisine'):
+                html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant["cuisine"])}</span>'
 
-            if restaurant['rating']:
+            if restaurant.get('rating'):
                 html += f' <span class="rating">{"★" * restaurant["rating"]}</span>'
 
             html += '</p></div>'
@@ -654,30 +695,30 @@ def generate_price_ranges_page(restaurants, price_ranges_index, output_dir):
 
 def generate_index(restaurants, cuisines_count, locations_count, categories_count, output_dir):
     """Generate main index page with statistics dashboard."""
-    html = html_header("Restaurant Tracker")
+    html = html_header("Paul's Restaurants")
+    html += '<p class="subtitle">A personal collection of dining experiences</p>'
 
-    visited_restaurants = [r for r in restaurants if r['visit_status'] == 'visited']
-    wishlist_restaurants = [r for r in restaurants if r['visit_status'] == 'want_to_visit']
-    rated_restaurants = [r for r in visited_restaurants if r['rating']]
+    visited_restaurants = [r for r in restaurants if r.get('visit_status') == 'visited']
+    wishlist_restaurants = [r for r in restaurants if r.get('visit_status') == 'want_to_visit']
+    rated_restaurants = [r for r in visited_restaurants if r.get('rating')]
     avg_rating = sum(r['rating'] for r in rated_restaurants) / len(rated_restaurants) if rated_restaurants else 0
 
     # Get most common cuisine
     cuisine_counts = defaultdict(int)
     for r in restaurants:
-        if r['cuisine']:
+        if r.get('cuisine'):
             cuisine_counts[r['cuisine']] += 1
     most_common_cuisine = max(cuisine_counts.items(), key=lambda x: x[1])[0] if cuisine_counts else "N/A"
 
     # Get unique locations count
-    unique_locations = len(set(r['location'] for r in restaurants if r['location']))
+    unique_locations = len(set(r.get('location') for r in restaurants if r.get('location')))
 
     html += f'''<div class="stats">
-        <div class="stat"><div class="stat-value">{len(restaurants)}</div><div class="stat-label">Total Restaurants</div></div>
+        <div class="stat"><div class="stat-value">{len(restaurants)}</div><div class="stat-label">Restaurants</div></div>
         <div class="stat"><div class="stat-value">{len(visited_restaurants)}</div><div class="stat-label">Visited</div></div>
         <div class="stat"><div class="stat-value">{len(wishlist_restaurants)}</div><div class="stat-label">Wishlist</div></div>
         <div class="stat"><div class="stat-value">{avg_rating:.1f}</div><div class="stat-label">Avg Rating</div></div>
         <div class="stat"><div class="stat-value">{unique_locations}</div><div class="stat-label">Locations</div></div>
-        <div class="stat"><div class="stat-value">{escape(most_common_cuisine)}</div><div class="stat-label">Top Cuisine</div></div>
     </div>'''
 
     html += '<div class="nav-sections">'
@@ -695,12 +736,13 @@ def generate_index(restaurants, cuisines_count, locations_count, categories_coun
     </div>'''
 
     # Recently added
-    recent = sorted(restaurants, key=lambda r: r['date_added'], reverse=True)[:5]
-    html += '<div class="nav-section"><h3>🕐 Recently Added</h3><ul>'
-    for restaurant in recent:
-        slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-        html += f'<li><a href="restaurants/{slug}.html">{escape(restaurant["restaurant_name"])}</a></li>'
-    html += '</ul></div>'
+    recent = sorted(restaurants, key=lambda r: r.get('date_added', ''), reverse=True)[:5]
+    if recent:
+        html += '<div class="nav-section"><h3>🕐 Recently Added</h3><ul>'
+        for restaurant in recent:
+            slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
+            html += f'<li><a href="restaurants/{slug}.html">{escape(restaurant["restaurant_name"])}</a></li>'
+        html += '</ul></div>'
 
     # Top rated
     top_rated = sorted(rated_restaurants, key=lambda r: r['rating'], reverse=True)[:5]
@@ -731,6 +773,7 @@ def generate_site(force=False):
     # Check if regeneration needed
     if not os.path.exists(DB_PATH):
         print(f"Error: Database not found at {DB_PATH}")
+        print("Run 'python restaurant_tracker.py add' to add your first restaurant.")
         return False
 
     current_hash = get_db_hash(DB_PATH)
@@ -765,11 +808,11 @@ def generate_site(force=False):
     price_ranges_index = defaultdict(list)
 
     for restaurant in restaurants:
-        if restaurant['cuisine']:
+        if restaurant.get('cuisine'):
             cuisines_index[restaurant['cuisine']].append(restaurant)
-        if restaurant['location']:
+        if restaurant.get('location'):
             locations_index[restaurant['location']].append(restaurant)
-        if restaurant['price_range']:
+        if restaurant.get('price_range'):
             price_ranges_index[restaurant['price_range']].append(restaurant)
         for cat in restaurant['llm_categories_list'] + restaurant['user_categories_list']:
             if cat:
@@ -780,7 +823,7 @@ def generate_site(force=False):
     for cuisine, cuisine_restaurants in cuisines_index.items():
         slug = slugify(cuisine)
         filepath = os.path.join(OUTPUT_DIR, "cuisines", f"{slug}.html")
-        generate_group_page(cuisine, cuisine_restaurants, filepath, [("Cuisines", "../cuisines.html"), (cuisine, None)], home_link="../index.html")
+        generate_group_page(cuisine, cuisine_restaurants, filepath, [("Cuisines", "cuisines.html"), (cuisine, None)], base="../")
         cuisine_items.append((cuisine, f"cuisines/{slug}.html", len(cuisine_restaurants)))
 
     generate_list_page("Cuisines", cuisine_items,
@@ -794,7 +837,7 @@ def generate_site(force=False):
     for location, location_restaurants in locations_index.items():
         slug = slugify(location)
         filepath = os.path.join(OUTPUT_DIR, "locations", f"{slug}.html")
-        generate_group_page(location, location_restaurants, filepath, [("Locations", "../locations.html"), (location, None)], home_link="../index.html")
+        generate_group_page(location, location_restaurants, filepath, [("Locations", "locations.html"), (location, None)], base="../")
         location_items.append((location, f"locations/{slug}.html", len(location_restaurants)))
 
     generate_list_page("Locations", location_items,
@@ -808,7 +851,7 @@ def generate_site(force=False):
     for cat, cat_restaurants in categories_index.items():
         slug = slugify(cat)
         filepath = os.path.join(OUTPUT_DIR, "categories", f"{slug}.html")
-        generate_group_page(cat, cat_restaurants, filepath, [("Categories", "../categories.html"), (cat, None)], home_link="../index.html")
+        generate_group_page(cat, cat_restaurants, filepath, [("Categories", "categories.html"), (cat, None)], base="../")
         category_items.append((cat, f"categories/{slug}.html", len(cat_restaurants)))
 
     generate_list_page("Categories", category_items,
