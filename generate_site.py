@@ -1,135 +1,124 @@
 #!/usr/bin/env python3
 """
-Generate a static website from the restaurants database.
-Only regenerates if the database has changed since last run.
+Generate a single-page application for the restaurants database.
+Outputs: index.html + data.json
 """
 
 import os
-import sys
 import json
 import sqlite3
-import hashlib
-from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
-from html import escape
 
-# Configuration
 DB_PATH = "restaurants.db"
 OUTPUT_DIR = "site"
-STATE_FILE = ".site_state.json"
-
-# Cuisine colors for badges
-CUISINE_COLORS = {
-    'italian': '#e74c3c',
-    'japanese': '#e91e63',
-    'chinese': '#f39c12',
-    'mexican': '#e67e22',
-    'indian': '#9b59b6',
-    'thai': '#16a085',
-    'french': '#3498db',
-    'american': '#34495e',
-    'mediterranean': '#27ae60',
-    'korean': '#c0392b',
-    'vietnamese': '#2ecc71',
-    'steakhouse': '#8e44ad',
-    'seafood': '#1abc9c',
-    'bbq': '#d35400',
-    'pizza': '#e74c3c',
-    'sushi': '#e91e63',
-    'fusion': '#95a5a6',
-    'bakery': '#8b4513',
-    'cafe': '#6b4423'
-}
-
-
-def get_db_hash(db_path):
-    """Get hash of database file to detect changes."""
-    with open(db_path, 'rb') as f:
-        return hashlib.md5(f.read()).hexdigest()
-
-
-def load_state():
-    """Load previous generation state."""
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, 'r') as f:
-            return json.load(f)
-    return {}
-
-
-def save_state(state):
-    """Save generation state."""
-    with open(STATE_FILE, 'w') as f:
-        json.dump(state, f)
 
 
 def parse_json_field(value):
-    """Parse a JSON field, returning empty list if invalid."""
     if not value:
         return []
     try:
         result = json.loads(value)
-        if isinstance(result, list):
-            return result
-        return [result]
+        return result if isinstance(result, list) else [result]
     except:
         return [value] if value else []
 
 
-def slugify(text):
-    """Convert text to URL-safe slug."""
-    if not text:
-        return "unknown"
-    return "".join(c if c.isalnum() else "-" for c in text.lower()).strip("-")[:50]
-
-
-def get_cuisine_color(cuisine):
-    """Get color for cuisine badge."""
-    if not cuisine:
-        return '#95a5a6'
-    return CUISINE_COLORS.get(cuisine.lower(), '#95a5a6')
-
-
 def get_all_restaurants(db_path):
-    """Fetch all restaurants from database."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM restaurants ORDER BY restaurant_name")
     restaurants = [dict(row) for row in cursor.fetchall()]
     conn.close()
-
-    # Parse JSON fields
-    for restaurant in restaurants:
-        restaurant['signature_dishes_list'] = parse_json_field(restaurant.get('signature_dishes'))
-        restaurant['dietary_accommodations_list'] = parse_json_field(restaurant.get('dietary_accommodations'))
-        restaurant['awards_list'] = parse_json_field(restaurant.get('awards'))
-        restaurant['similar_restaurants_list'] = parse_json_field(restaurant.get('similar_restaurants'))
-        restaurant['llm_categories_list'] = parse_json_field(restaurant.get('llm_categories'))
-        restaurant['user_categories_list'] = parse_json_field(restaurant.get('user_categories'))
-
+    
+    for r in restaurants:
+        r['dishes_list'] = parse_json_field(r.get('signature_dishes'))
+        r['awards_list'] = parse_json_field(r.get('awards'))
+        r['categories_list'] = parse_json_field(r.get('llm_categories', [])) + parse_json_field(r.get('user_categories', []))
+    
     return restaurants
 
 
-# HTML Templates
-def html_header(title, breadcrumbs=None, base=""):
-    """Generate HTML header. base should be '../' for pages in subdirectories."""
-    bc_html = ""
-    if breadcrumbs:
-        bc_parts = [f'<a href="{base}index.html">Home</a>']
-        for name, link in breadcrumbs:
-            if link:
-                bc_parts.append(f'<a href="{base}{link}">{escape(name)}</a>')
-            else:
-                bc_parts.append(escape(name))
-        bc_html = f'<nav class="breadcrumbs">{" → ".join(bc_parts)}</nav>'
+def generate_data_json(restaurants):
+    data = {
+        'restaurants': [],
+        'stats': {
+            'total': len(restaurants),
+            'visited': sum(1 for r in restaurants if r.get('visit_status') == 'visited'),
+            'wishlist': sum(1 for r in restaurants if r.get('visit_status') == 'want_to_visit'),
+        },
+        'cuisines': defaultdict(list),
+        'locations': defaultdict(list),
+        'price_ranges': defaultdict(list),
+    }
+    
+    ratings = [r['rating'] for r in restaurants if r.get('rating') and r.get('visit_status') == 'visited']
+    data['stats']['avg_rating'] = round(sum(ratings) / len(ratings), 1) if ratings else 0
+    
+    for r in restaurants:
+        rest_data = {
+            'id': r['id'],
+            'name': r['restaurant_name'],
+            'location': r.get('location') or '',
+            'cuisine': r.get('cuisine') or '',
+            'status': r.get('visit_status') or 'want_to_visit',
+            'date_visited': r.get('date_visited') or '',
+            'rating': r.get('rating'),
+            'date_added': r['date_added'][:10] if r.get('date_added') else '',
+            'price': r.get('price_range') or '',
+            'address': r.get('full_address') or '',
+            'phone': r.get('phone_number') or '',
+            'website': r.get('website') or '',
+            'hours': r.get('hours_summary') or '',
+            'type': r.get('restaurant_type') or '',
+            'atmosphere': r.get('atmosphere') or '',
+            'dishes': r['dishes_list'],
+            'awards': r['awards_list'],
+            'notes': r.get('personal_notes') or '',
+        }
+        data['restaurants'].append(rest_data)
+        
+        if r.get('cuisine'):
+            if r['id'] not in data['cuisines'][r['cuisine']]:
+                data['cuisines'][r['cuisine']].append(r['id'])
+        
+        if r.get('location'):
+            if r['id'] not in data['locations'][r['location']]:
+                data['locations'][r['location']].append(r['id'])
+        
+        if r.get('price_range'):
+            if r['id'] not in data['price_ranges'][r['price_range']]:
+                data['price_ranges'][r['price_range']].append(r['id'])
+    
+    data['stats']['cuisine_count'] = len(data['cuisines'])
+    data['stats']['location_count'] = len(data['locations'])
+    
+    data['cuisines'] = dict(data['cuisines'])
+    data['locations'] = dict(data['locations'])
+    data['price_ranges'] = dict(data['price_ranges'])
+    
+    return data
 
+
+CUISINE_COLORS = {
+    'italian': '#e74c3c', 'japanese': '#e91e63', 'chinese': '#f39c12',
+    'mexican': '#e67e22', 'indian': '#9b59b6', 'thai': '#16a085',
+    'french': '#3498db', 'american': '#34495e', 'mediterranean': '#27ae60',
+    'korean': '#c0392b', 'vietnamese': '#2ecc71', 'steakhouse': '#8e44ad',
+    'seafood': '#1abc9c', 'bbq': '#d35400', 'pizza': '#e74c3c',
+    'sushi': '#e91e63', 'fusion': '#95a5a6', 'bakery': '#8b4513', 'cafe': '#6b4423'
+}
+
+
+def generate_html():
+    cuisine_colors_js = json.dumps(CUISINE_COLORS)
     return f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{escape(title)} - Paul's Restaurants</title>
+    <title>Paul's Restaurants</title>
     <style>
         :root {{
             --bg: #ffffff;
@@ -138,10 +127,7 @@ def html_header(title, breadcrumbs=None, base=""):
             --text-muted: #7f8c8d;
             --accent: #d97706;
             --accent-hover: #b45309;
-            --link: #d97706;
-            --link-hover: #b45309;
             --border: #e0e0e0;
-            --border-light: #f0f0f0;
         }}
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
         body {{
@@ -153,65 +139,74 @@ def html_header(title, breadcrumbs=None, base=""):
             max-width: 1200px;
             margin: 0 auto;
         }}
-        .back-to-collections {{
+        .back-link {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             font-size: 0.85rem;
             margin-bottom: 1.5rem;
         }}
-        .back-to-collections a {{
-            color: var(--text-muted);
-            text-decoration: none;
-        }}
-        .back-to-collections a:hover {{
-            color: var(--accent);
-        }}
-        a {{ color: var(--link); text-decoration: none; }}
-        a:hover {{ color: var(--link-hover); text-decoration: underline; }}
-        h1 {{ 
-            color: var(--accent); 
-            margin-bottom: 0.5rem; 
-            font-size: 2.5rem; 
-            font-weight: normal;
-            text-align: center;
-        }}
-        .subtitle {{
-            text-align: center;
-            color: var(--text-muted);
-            font-style: italic;
+        .back-link a {{ color: var(--text-muted); text-decoration: none; }}
+        .back-link a:hover {{ color: var(--accent); }}
+        h1 {{ color: var(--accent); font-size: 2.5rem; font-weight: normal; text-align: center; margin-bottom: 0.5rem; }}
+        .subtitle {{ text-align: center; color: var(--text-muted); font-style: italic; margin-bottom: 2rem; }}
+        .stats {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
             margin-bottom: 2rem;
-            font-size: 1.1rem;
         }}
-        h2 {{ 
-            color: var(--text); 
-            margin: 2.5rem 0 1.5rem; 
-            font-size: 1.5rem; 
-            font-weight: normal;
-            padding-bottom: 0.75rem;
-            border-bottom: 2px solid var(--border);
-        }}
-        h3 {{ color: var(--text); margin: 1.25rem 0 0.75rem; font-size: 1.1rem; font-weight: 600; }}
-        .breadcrumbs {{ 
-            margin-bottom: 2rem; 
-            color: var(--text-muted); 
-            font-size: 0.9rem; 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            padding: 1rem;
+        .stat {{
             background: var(--bg-card);
-            border-radius: 8px;
-        }}
-        .breadcrumbs a {{ color: var(--accent); }}
-        .card {{
-            background: var(--bg-card);
-            padding: 2rem;
-            margin-bottom: 1.5rem;
+            padding: 1.25rem;
+            text-align: center;
             border: 2px solid var(--border);
             border-radius: 8px;
-            transition: all 0.2s ease;
         }}
-        .card:hover {{
-            border-color: var(--accent);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        .stat-value {{ font-size: 2rem; color: var(--accent); }}
+        .stat-label {{ font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-family: -apple-system, sans-serif; }}
+        .nav-tabs {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 1rem;
         }}
+        .nav-tab {{
+            padding: 0.5rem 1rem;
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: -apple-system, sans-serif;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }}
+        .nav-tab:hover, .nav-tab.active {{ background: var(--accent); color: white; border-color: var(--accent); }}
+        .search-box {{
+            width: 100%;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            font-family: Georgia, serif;
+        }}
+        .search-box:focus {{ outline: none; border-color: var(--accent); }}
+        .filter-section {{ margin-bottom: 2rem; }}
+        .filter-title {{ font-size: 1.1rem; margin-bottom: 1rem; color: var(--text); }}
+        .filter-tags {{ display: flex; flex-wrap: wrap; gap: 0.5rem; }}
+        .filter-tag {{
+            padding: 0.4rem 0.8rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-family: -apple-system, sans-serif;
+            transition: all 0.2s;
+        }}
+        .filter-tag:hover {{ border-color: var(--accent); color: var(--accent); }}
+        .filter-tag .count {{ color: var(--text-muted); margin-left: 0.3rem; }}
         .restaurant-grid {{
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -222,668 +217,308 @@ def html_header(title, breadcrumbs=None, base=""):
             padding: 1.5rem;
             border: 2px solid var(--border);
             border-radius: 8px;
-            transition: all 0.2s ease;
+            cursor: pointer;
+            transition: all 0.2s;
         }}
-        .restaurant-card:hover {{ 
-            border-color: var(--accent); 
-            box-shadow: 0 4px 12px rgba(217,119,6,0.1);
-            transform: translateY(-2px);
-        }}
-        .restaurant-card h3 {{ margin: 0 0 0.5rem; font-size: 1.05rem; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
-        .restaurant-card h3 a {{ text-decoration: none; color: var(--text); }}
-        .restaurant-card h3 a:hover {{ color: var(--accent); }}
-        .restaurant-card .location {{ color: var(--text-muted); font-size: 0.95rem; font-style: italic; }}
-        .restaurant-card .meta {{ font-size: 0.85rem; color: var(--text-muted); margin-top: 0.75rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
-        .rating {{ color: var(--accent); }}
+        .restaurant-card:hover {{ border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(217,119,6,0.1); }}
+        .restaurant-card h3 {{ font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem; font-family: -apple-system, sans-serif; }}
+        .restaurant-card .location {{ color: var(--text-muted); font-style: italic; font-size: 0.95rem; }}
+        .restaurant-card .meta {{ font-size: 0.85rem; color: var(--text-muted); margin-top: 0.75rem; font-family: -apple-system, sans-serif; }}
+        .restaurant-card .rating {{ color: var(--accent); }}
         .status {{ 
-            display: inline-block; 
-            padding: 0.2rem 0.6rem; 
-            font-size: 0.7rem; 
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            font-size: 0.7rem;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             border-radius: 4px;
+            font-family: -apple-system, sans-serif;
         }}
         .status.visited {{ background: #d4edda; color: #155724; }}
         .status.want_to_visit {{ background: #fff3cd; color: #856404; }}
-        .cuisine-badge {{
+        .cuisine-badge {{ 
             display: inline-block;
             color: white;
-            padding: 0.2rem 0.6rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
             font-size: 0.7rem;
             margin-right: 0.5rem;
-            border-radius: 4px;
-            font-weight: 500;
-            text-transform: capitalize;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: -apple-system, sans-serif;
         }}
         .price-badge {{
             display: inline-block;
             background: #95a5a6;
             color: white;
             padding: 0.2rem 0.5rem;
+            border-radius: 4px;
             font-size: 0.7rem;
-            border-radius: 4px;
-            font-weight: 600;
-            margin-left: 0.5rem;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: -apple-system, sans-serif;
         }}
-        .tag {{
-            display: inline-block;
-            background: var(--bg-card);
-            color: var(--text-muted);
-            padding: 0.3rem 0.8rem;
-            font-size: 0.85rem;
-            margin: 0.25rem;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            text-decoration: none;
+        
+        /* Modal */
+        .modal-overlay {{
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 2rem;
         }}
-        .tag:hover {{ background: var(--accent); color: white; border-color: var(--accent); text-decoration: none; }}
-        .nav-sections {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2.5rem;
+        .modal-overlay.active {{ display: block; }}
+        .modal {{
+            background: white;
+            max-width: 700px;
+            margin: 0 auto;
+            border-radius: 12px;
+            padding: 2rem;
+            position: relative;
         }}
-        .nav-section {{
-            background: var(--bg-card);
-            padding: 1.5rem;
-            border: 2px solid var(--border);
-            border-radius: 8px;
-        }}
-        .nav-section h3 {{ margin-bottom: 1rem; color: var(--accent); font-size: 1rem; font-weight: 600; }}
-        .nav-section ul {{ list-style: none; }}
-        .nav-section li {{ margin: 0.5rem 0; font-size: 0.95rem; }}
-        .nav-section a {{ text-decoration: none; }}
-        .nav-section a:hover {{ text-decoration: underline; }}
-        .stats {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2.5rem;
-        }}
-        .stat {{
-            background: var(--bg-card);
-            padding: 1.25rem;
-            text-align: center;
-            border: 2px solid var(--border);
-            border-radius: 8px;
-        }}
-        .stat-value {{ font-size: 2rem; color: var(--accent); font-weight: normal; font-family: Georgia, serif; }}
-        .stat-label {{ font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
-        .timeline-year {{
-            margin-bottom: 3rem;
-            padding-bottom: 2rem;
-            border-bottom: 2px solid var(--border);
-        }}
-        .timeline-year h2 {{
-            color: var(--accent);
-            font-size: 2rem;
-            margin-bottom: 1.5rem;
+        .modal-close {{
+            position: absolute;
+            top: 1rem; right: 1rem;
+            background: none;
             border: none;
-        }}
-        .timeline-month {{ margin-bottom: 2rem; }}
-        .timeline-month h3 {{
+            font-size: 1.5rem;
+            cursor: pointer;
             color: var(--text-muted);
-            font-size: 1.2rem;
-            margin-bottom: 1rem;
-            font-weight: 600;
         }}
-        dl {{ margin: 1.25rem 0; }}
-        dt {{ color: var(--text-muted); font-size: 0.85rem; margin-top: 1rem; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
-        dd {{ margin-left: 0; margin-top: 0.5rem; }}
-        ul.dish-list {{ margin-left: 1.5rem; line-height: 1.8; }}
-        ul.dish-list li {{ margin: 0.25rem 0; }}
+        .modal-close:hover {{ color: var(--accent); }}
+        .modal h2 {{ color: var(--accent); margin-bottom: 0.5rem; font-weight: normal; }}
+        .modal .location {{ font-style: italic; color: var(--text-muted); margin-bottom: 1rem; font-size: 1.1rem; }}
+        .modal .meta-row {{ margin: 1rem 0; }}
+        .modal .label {{ font-weight: 600; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; font-family: -apple-system, sans-serif; }}
+        .modal .dishes {{ background: var(--bg-card); padding: 1rem; border-radius: 8px; margin: 1rem 0; }}
+        .modal .dishes ul {{ margin-left: 1.5rem; }}
+        .modal .dishes li {{ margin: 0.3rem 0; }}
+        
+        .results-count {{ color: var(--text-muted); margin-bottom: 1rem; font-family: -apple-system, sans-serif; }}
+        footer {{ margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; text-align: center; font-family: -apple-system, sans-serif; }}
     </style>
 </head>
 <body>
-<div class="back-to-collections"><a href="https://pauls-collections.vercel.app">← All Collections</a></div>
-{bc_html}
-<h1>{escape(title)}</h1>
-'''
-
-
-def html_footer():
-    """Generate HTML footer."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    return f'''
-<footer style="margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-    Generated on {timestamp}
-</footer>
+    <div class="back-link"><a href="https://pauls-collections.vercel.app">← All Collections</a></div>
+    <h1>Paul's Restaurants</h1>
+    <p class="subtitle">A personal dining collection</p>
+    
+    <div class="stats" id="stats"></div>
+    
+    <div class="nav-tabs">
+        <button class="nav-tab active" data-view="all">All Restaurants</button>
+        <button class="nav-tab" data-view="cuisines">Cuisines</button>
+        <button class="nav-tab" data-view="locations">Locations</button>
+        <button class="nav-tab" data-view="price_ranges">Price Range</button>
+    </div>
+    
+    <input type="text" class="search-box" id="search" placeholder="Search restaurants, cuisines, locations...">
+    
+    <div id="filters" class="filter-section" style="display:none;"></div>
+    <div class="results-count" id="results-count"></div>
+    <div class="restaurant-grid" id="restaurants"></div>
+    
+    <div class="modal-overlay" id="modal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+    
+    <footer>Generated <span id="timestamp"></span></footer>
+    
+    <script>
+    const CUISINE_COLORS = {cuisine_colors_js};
+    let DATA = null;
+    let currentView = 'all';
+    let currentFilter = null;
+    
+    function getCuisineColor(cuisine) {{
+        if (!cuisine) return '#95a5a6';
+        return CUISINE_COLORS[cuisine.toLowerCase()] || '#95a5a6';
+    }}
+    
+    async function init() {{
+        const resp = await fetch('data.json');
+        DATA = await resp.json();
+        document.getElementById('timestamp').textContent = new Date().toLocaleDateString();
+        renderStats();
+        renderRestaurants(DATA.restaurants);
+        setupEventListeners();
+    }}
+    
+    function renderStats() {{
+        const s = DATA.stats;
+        document.getElementById('stats').innerHTML = `
+            <div class="stat"><div class="stat-value">${{s.total}}</div><div class="stat-label">Restaurants</div></div>
+            <div class="stat"><div class="stat-value">${{s.visited}}</div><div class="stat-label">Visited</div></div>
+            <div class="stat"><div class="stat-value">${{s.wishlist}}</div><div class="stat-label">Wishlist</div></div>
+            <div class="stat"><div class="stat-value">${{s.avg_rating || 'N/A'}}</div><div class="stat-label">Avg Rating</div></div>
+            <div class="stat"><div class="stat-value">${{s.location_count}}</div><div class="stat-label">Locations</div></div>
+        `;
+    }}
+    
+    function renderRestaurants(restaurants) {{
+        document.getElementById('results-count').textContent = `${{restaurants.length}} restaurant${{restaurants.length !== 1 ? 's' : ''}}`;
+        document.getElementById('restaurants').innerHTML = restaurants.map(r => `
+            <div class="restaurant-card" onclick="showRestaurant(${{r.id}})">
+                <h3>${{esc(r.name)}}</h3>
+                <div class="location">📍 ${{esc(r.location) || 'Unknown'}}</div>
+                <div class="meta">
+                    ${{r.cuisine ? `<span class="cuisine-badge" style="background:${{getCuisineColor(r.cuisine)}}">${{esc(r.cuisine)}}</span>` : ''}}
+                    <span class="status ${{r.status}}">${{r.status === 'visited' ? 'Visited' : 'Wishlist'}}</span>
+                    ${{r.rating ? ` <span class="rating">${{'★'.repeat(r.rating)}}</span>` : ''}}
+                    ${{r.price ? ` <span class="price-badge">${{esc(r.price)}}</span>` : ''}}
+                </div>
+            </div>
+        `).join('');
+    }}
+    
+    function renderFilters(type) {{
+        let items = [];
+        if (type === 'cuisines') items = Object.entries(DATA.cuisines).map(([k,v]) => [k, v.length]).sort((a,b) => b[1]-a[1]);
+        else if (type === 'locations') items = Object.entries(DATA.locations).map(([k,v]) => [k, v.length]).sort((a,b) => b[1]-a[1]);
+        else if (type === 'price_ranges') items = Object.entries(DATA.price_ranges).map(([k,v]) => [k, v.length]).sort((a,b) => a[0].length - b[0].length);
+        
+        if (items.length === 0) {{
+            document.getElementById('filters').style.display = 'none';
+            return;
+        }}
+        
+        const title = type.replace('_', ' ').replace(/\\b\\w/g, l => l.toUpperCase());
+        document.getElementById('filters').style.display = 'block';
+        document.getElementById('filters').innerHTML = `
+            <div class="filter-title">${{title}} (${{items.length}})</div>
+            <div class="filter-tags">
+                ${{items.map(([name, count]) => `<span class="filter-tag" data-filter="${{esc(name)}}">${{esc(name)}}<span class="count">(${{count}})</span></span>`).join('')}}
+            </div>
+        `;
+    }}
+    
+    function filterRestaurants(type, value) {{
+        let ids = [];
+        if (type === 'cuisines') ids = DATA.cuisines[value] || [];
+        else if (type === 'locations') ids = DATA.locations[value] || [];
+        else if (type === 'price_ranges') ids = DATA.price_ranges[value] || [];
+        
+        const restaurants = DATA.restaurants.filter(r => ids.includes(r.id));
+        renderRestaurants(restaurants);
+    }}
+    
+    function searchRestaurants(query) {{
+        const q = query.toLowerCase();
+        const restaurants = DATA.restaurants.filter(r => 
+            r.name.toLowerCase().includes(q) ||
+            (r.location && r.location.toLowerCase().includes(q)) ||
+            (r.cuisine && r.cuisine.toLowerCase().includes(q))
+        );
+        renderRestaurants(restaurants);
+    }}
+    
+    function showRestaurant(id) {{
+        const r = DATA.restaurants.find(x => x.id === id);
+        if (!r) return;
+        
+        document.getElementById('modal-content').innerHTML = `
+            <h2>${{esc(r.name)}}</h2>
+            <div class="location">📍 ${{esc(r.location) || 'Unknown'}}</div>
+            <div class="meta-row">
+                ${{r.cuisine ? `<span class="cuisine-badge" style="background:${{getCuisineColor(r.cuisine)}}">${{esc(r.cuisine)}}</span>` : ''}}
+                <span class="status ${{r.status}}">${{r.status === 'visited' ? 'Visited' : 'Wishlist'}}</span>
+                ${{r.price ? ` <span class="price-badge">${{esc(r.price)}}</span>` : ''}}
+                ${{r.rating ? ` <span class="rating">${{'★'.repeat(r.rating)}}</span> ${{r.rating}}/10` : ''}}
+            </div>
+            ${{r.date_visited ? `<div class="meta-row"><span class="label">Date Visited:</span> ${{r.date_visited}}</div>` : ''}}
+            ${{r.address ? `<div class="meta-row"><span class="label">Address:</span> ${{esc(r.address)}}</div>` : ''}}
+            ${{r.phone ? `<div class="meta-row"><span class="label">Phone:</span> ${{esc(r.phone)}}</div>` : ''}}
+            ${{r.website ? `<div class="meta-row"><span class="label">Website:</span> <a href="${{esc(r.website)}}" target="_blank">${{esc(r.website)}}</a></div>` : ''}}
+            ${{r.hours ? `<div class="meta-row"><span class="label">Hours:</span> ${{esc(r.hours)}}</div>` : ''}}
+            ${{r.type ? `<div class="meta-row"><span class="label">Type:</span> ${{esc(r.type)}}</div>` : ''}}
+            ${{r.atmosphere ? `<div class="meta-row"><span class="label">Atmosphere:</span> ${{esc(r.atmosphere)}}</div>` : ''}}
+            ${{r.dishes.length ? `<div class="meta-row"><span class="label">Signature Dishes</span><div class="dishes"><ul>${{r.dishes.map(d => `<li>${{esc(d)}}</li>`).join('')}}</ul></div></div>` : ''}}
+            ${{r.awards.length ? `<div class="meta-row"><span class="label">Awards:</span> ${{esc(r.awards.join(', '))}}</div>` : ''}}
+            ${{r.notes ? `<div class="meta-row"><span class="label">Notes:</span> ${{esc(r.notes)}}</div>` : ''}}
+            <div class="meta-row" style="color: var(--text-muted); font-size: 0.85rem;">Added: ${{r.date_added}}</div>
+        `;
+        document.getElementById('modal').classList.add('active');
+    }}
+    
+    function closeModal() {{
+        document.getElementById('modal').classList.remove('active');
+    }}
+    
+    function setupEventListeners() {{
+        document.querySelectorAll('.nav-tab').forEach(tab => {{
+            tab.addEventListener('click', () => {{
+                document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentView = tab.dataset.view;
+                currentFilter = null;
+                document.getElementById('search').value = '';
+                
+                if (currentView === 'all') {{
+                    document.getElementById('filters').style.display = 'none';
+                    renderRestaurants(DATA.restaurants);
+                }} else {{
+                    renderFilters(currentView);
+                    renderRestaurants(DATA.restaurants);
+                }}
+            }});
+        }});
+        
+        document.getElementById('filters').addEventListener('click', e => {{
+            if (e.target.classList.contains('filter-tag')) {{
+                currentFilter = e.target.dataset.filter;
+                filterRestaurants(currentView, currentFilter);
+            }}
+        }});
+        
+        document.getElementById('search').addEventListener('input', e => {{
+            if (e.target.value) searchRestaurants(e.target.value);
+            else if (currentFilter) filterRestaurants(currentView, currentFilter);
+            else renderRestaurants(DATA.restaurants);
+        }});
+        
+        document.getElementById('modal').addEventListener('click', e => {{
+            if (e.target.id === 'modal') closeModal();
+        }});
+        
+        document.addEventListener('keydown', e => {{
+            if (e.key === 'Escape') closeModal();
+        }});
+    }}
+    
+    function esc(s) {{ 
+        if (!s) return '';
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); 
+    }}
+    
+    init();
+    </script>
 </body>
-</html>
-'''
+</html>'''
 
 
-def generate_restaurant_page(restaurant, output_dir):
-    """Generate individual restaurant page."""
-    slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-    filepath = os.path.join(output_dir, "restaurants", f"{slug}.html")
-
-    html = html_header(restaurant['restaurant_name'], [("Restaurants", "restaurants.html"), (restaurant['restaurant_name'], None)], base="../")
-
-    html += '<div class="card">'
-    html += f'<p class="location" style="font-size: 1.1rem; color: var(--text-muted); margin-bottom: 1rem; font-style: italic;">📍 {escape(restaurant["location"] or "Unknown")}</p>'
-
-    # Cuisine, status and rating
-    html += '<p style="margin: 1rem 0;">'
-    if restaurant.get('cuisine'):
-        cuisine_color = get_cuisine_color(restaurant['cuisine'])
-        html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant["cuisine"])}</span>'
-
-    status_class = restaurant.get('visit_status', 'want_to_visit')
-    status_text = "Visited" if status_class == "visited" else "Want to Visit"
-    html += f' <span class="status {status_class}">{status_text}</span>'
-
-    if restaurant.get('price_range'):
-        html += f' <span class="price-badge">{escape(restaurant["price_range"])}</span>'
-
-    if restaurant.get('rating'):
-        html += f' <span class="rating">{"★" * restaurant["rating"]}{"☆" * (10 - restaurant["rating"])}</span> {restaurant["rating"]}/10'
-    html += '</p>'
-
-    html += '<dl>'
-
-    if restaurant.get('date_visited'):
-        html += f'<dt>Date Visited</dt><dd>{escape(restaurant["date_visited"])}</dd>'
-
-    if restaurant.get('full_address'):
-        html += f'<dt>Address</dt><dd>{escape(restaurant["full_address"])}</dd>'
-
-    if restaurant.get('phone_number'):
-        html += f'<dt>Phone</dt><dd>{escape(restaurant["phone_number"])}</dd>'
-
-    if restaurant.get('website'):
-        html += f'<dt>Website</dt><dd><a href="{escape(restaurant["website"])}" target="_blank">{escape(restaurant["website"])}</a></dd>'
-
-    if restaurant.get('hours_summary'):
-        html += f'<dt>Hours</dt><dd>{escape(restaurant["hours_summary"])}</dd>'
-
-    if restaurant.get('restaurant_type'):
-        html += f'<dt>Type</dt><dd>{escape(restaurant["restaurant_type"])}</dd>'
-
-    if restaurant.get('chef_owner'):
-        html += f'<dt>Chef/Owner</dt><dd>{escape(restaurant["chef_owner"])}</dd>'
-
-    if restaurant.get('established_year'):
-        html += f'<dt>Established</dt><dd>{restaurant["established_year"]}</dd>'
-
-    if restaurant.get('reservations_info'):
-        html += f'<dt>Reservations</dt><dd>{escape(restaurant["reservations_info"])}</dd>'
-
-    if restaurant.get('dress_code'):
-        html += f'<dt>Dress Code</dt><dd>{escape(restaurant["dress_code"])}</dd>'
-
-    html += '</dl>'
-
-    if restaurant.get('cuisine_details'):
-        html += f'<h2>Cuisine</h2><p>{escape(restaurant["cuisine_details"])}</p>'
-
-    if restaurant['signature_dishes_list']:
-        html += '<h2>Signature Dishes</h2><ul class="dish-list">'
-        for dish in restaurant['signature_dishes_list']:
-            html += f'<li>{escape(dish)}</li>'
-        html += '</ul>'
-
-    if restaurant['dietary_accommodations_list']:
-        html += '<h2>Dietary Options</h2><p>'
-        html += ", ".join(escape(d) for d in restaurant['dietary_accommodations_list'])
-        html += '</p>'
-
-    if restaurant.get('atmosphere'):
-        html += f'<h2>Atmosphere</h2><p>{escape(restaurant["atmosphere"])}</p>'
-
-    if restaurant.get('reviews_summary'):
-        html += f'<h2>Reviews</h2><p>{escape(restaurant["reviews_summary"])}</p>'
-
-    if restaurant['awards_list']:
-        html += '<h2>Awards & Recognition</h2><ul>'
-        for award in restaurant['awards_list']:
-            html += f'<li>{escape(award)}</li>'
-        html += '</ul>'
-
-    if restaurant['similar_restaurants_list']:
-        html += '<h2>Similar Restaurants</h2><p>'
-        html += ", ".join(escape(r) for r in restaurant['similar_restaurants_list'])
-        html += '</p>'
-
-    all_categories = restaurant['llm_categories_list'] + restaurant['user_categories_list']
-    if all_categories:
-        html += '<h2>Categories</h2><p>'
-        for cat in all_categories:
-            cat_slug = slugify(cat)
-            html += f'<a href="../categories/{cat_slug}.html" class="tag">{escape(cat)}</a>'
-        html += '</p>'
-
-    if restaurant.get('personal_notes'):
-        html += f'<h2>Personal Notes</h2><p>{escape(restaurant["personal_notes"])}</p>'
-
-    html += f'<p style="margin-top: 1.5rem; font-size: 0.85rem; color: var(--text-muted); font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', sans-serif;">Added: {restaurant["date_added"][:10]}</p>'
-
-    html += '</div>'
-    html += html_footer()
-
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    with open(filepath, 'w') as f:
-        f.write(html)
-
-    return slug
-
-
-def generate_list_page(title, items, output_path, breadcrumbs, intro=""):
-    """Generate a list page (cuisines, locations, categories index)."""
-    html = html_header(title, breadcrumbs)
-
-    if intro:
-        html += f'<p class="subtitle">{intro}</p>'
-
-    html += '<ul style="list-style: none; columns: 2; column-gap: 2rem;">'
-    for name, link, count in sorted(items, key=lambda x: x[0].lower()):
-        html += f'<li style="margin: 0.5rem 0;"><a href="{link}">{escape(name)}</a> <span style="color: var(--text-muted);">({count})</span></li>'
-    html += '</ul>'
-
-    html += html_footer()
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, 'w') as f:
-        f.write(html)
-
-
-def generate_group_page(title, restaurants, output_path, breadcrumbs, base="../"):
-    """Generate a page showing a group of restaurants."""
-    html = html_header(title, breadcrumbs, base=base)
-
-    visited_count = sum(1 for r in restaurants if r.get('visit_status') == 'visited')
-    wishlist_count = len(restaurants) - visited_count
-    rated_restaurants = [r for r in restaurants if r.get('rating')]
-    avg_rating = sum(r['rating'] for r in rated_restaurants) / len(rated_restaurants) if rated_restaurants else 0
-
-    html += f'''<div class="stats">
-        <div class="stat"><div class="stat-value">{len(restaurants)}</div><div class="stat-label">Total</div></div>
-        <div class="stat"><div class="stat-value">{visited_count}</div><div class="stat-label">Visited</div></div>
-        <div class="stat"><div class="stat-value">{wishlist_count}</div><div class="stat-label">Wishlist</div></div>
-        <div class="stat"><div class="stat-value">{avg_rating:.1f}</div><div class="stat-label">Avg Rating</div></div>
-    </div>'''
-
-    html += '<div class="restaurant-grid">'
-    for restaurant in sorted(restaurants, key=lambda r: r['restaurant_name'].lower()):
-        slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-
-        html += f'''<div class="restaurant-card">
-            <h3><a href="{base}restaurants/{slug}.html">{escape(restaurant['restaurant_name'])}</a></h3>
-            <p class="location">📍 {escape(restaurant.get('location') or 'Unknown')}</p>
-            <p class="meta">'''
-
-        if restaurant.get('cuisine'):
-            cuisine_color = get_cuisine_color(restaurant['cuisine'])
-            html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant["cuisine"])}</span>'
-
-        if restaurant.get('rating'):
-            html += f' <span class="rating">{"★" * restaurant["rating"]}</span>'
-
-        if restaurant.get('price_range'):
-            html += f' <span class="price-badge">{escape(restaurant["price_range"])}</span>'
-
-        html += '</p></div>'
-    html += '</div>'
-
-    html += html_footer()
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, 'w') as f:
-        f.write(html)
-
-
-def generate_timeline(restaurants, output_dir):
-    """Generate timeline view grouped by year and month."""
-    html = html_header("Timeline", [("Timeline", None)])
-    html += '<p class="subtitle">Visits organized by date</p>'
-
-    # Separate visited restaurants with dates from wishlist
-    visited_restaurants = [r for r in restaurants if r.get('visit_status') == 'visited' and r.get('date_visited')]
-    wishlist_restaurants = [r for r in restaurants if r.get('visit_status') == 'want_to_visit']
-
-    # Group by year and month
-    timeline = defaultdict(lambda: defaultdict(list))
-    for restaurant in visited_restaurants:
-        try:
-            date = datetime.fromisoformat(restaurant['date_visited'])
-            year = date.year
-            month = date.strftime('%B')
-            timeline[year][month].append(restaurant)
-        except:
-            pass
-
-    # Wishlist section
-    if wishlist_restaurants:
-        html += '<div class="timeline-year">'
-        html += '<h2>📌 Want to Visit</h2>'
-        html += '<div class="restaurant-grid">'
-        for restaurant in sorted(wishlist_restaurants, key=lambda r: r['restaurant_name'].lower()):
-            slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-            cuisine_color = get_cuisine_color(restaurant.get('cuisine'))
-            html += f'''<div class="restaurant-card">
-                <h3><a href="restaurants/{slug}.html">{escape(restaurant['restaurant_name'])}</a></h3>
-                <p class="location">📍 {escape(restaurant.get('location') or 'Unknown')}</p>
-                <p class="meta"><span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant.get('cuisine') or 'Unknown')}</span></p>
-            </div>'''
-        html += '</div></div>'
-
-    # Year sections (most recent first)
-    for year in sorted(timeline.keys(), reverse=True):
-        html += f'<div class="timeline-year"><h2>{year}</h2>'
-
-        month_order = ['January', 'February', 'March', 'April', 'May', 'June',
-                      'July', 'August', 'September', 'October', 'November', 'December']
-
-        for month in month_order:
-            if month not in timeline[year]:
-                continue
-
-            month_restaurants = timeline[year][month]
-            html += f'<div class="timeline-month"><h3>{month}</h3>'
-            html += '<div class="restaurant-grid">'
-
-            for restaurant in sorted(month_restaurants, key=lambda r: r['date_visited'], reverse=True):
-                slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-                cuisine_color = get_cuisine_color(restaurant.get('cuisine'))
-                html += f'''<div class="restaurant-card">
-                    <h3><a href="restaurants/{slug}.html">{escape(restaurant['restaurant_name'])}</a></h3>
-                    <p class="location">📍 {escape(restaurant.get('location') or 'Unknown')}</p>'''
-
-                if restaurant.get('date_visited'):
-                    html += f'<p class="location">📅 {escape(restaurant["date_visited"])}</p>'
-
-                html += '<p class="meta">'
-                html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant.get("cuisine") or "Unknown")}</span>'
-                if restaurant.get('rating'):
-                    html += f' <span class="rating">{"★" * restaurant["rating"]}</span> {restaurant["rating"]}/10'
-                html += '</p></div>'
-
-            html += '</div></div>'
-
-        html += '</div>'
-
-    html += html_footer()
-
-    with open(os.path.join(output_dir, "timeline.html"), 'w') as f:
-        f.write(html)
-
-
-def generate_restaurants_index(restaurants, output_dir):
-    """Generate all restaurants index page."""
-    html = html_header("All Restaurants", [("All Restaurants", None)])
-
-    visited_count = sum(1 for r in restaurants if r.get('visit_status') == 'visited')
-    wishlist_count = len(restaurants) - visited_count
-
-    html += f'<p class="subtitle">{len(restaurants)} restaurants tracked</p>'
-
-    html += f'''<div class="stats">
-        <div class="stat"><div class="stat-value">{len(restaurants)}</div><div class="stat-label">Total</div></div>
-        <div class="stat"><div class="stat-value">{visited_count}</div><div class="stat-label">Visited</div></div>
-        <div class="stat"><div class="stat-value">{wishlist_count}</div><div class="stat-label">Wishlist</div></div>
-    </div>'''
-
-    html += '<div class="restaurant-grid">'
-    for restaurant in sorted(restaurants, key=lambda r: r['restaurant_name'].lower()):
-        slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-        cuisine_color = get_cuisine_color(restaurant.get('cuisine'))
-
-        html += f'''<div class="restaurant-card">
-            <h3><a href="restaurants/{slug}.html">{escape(restaurant['restaurant_name'])}</a></h3>
-            <p class="location">📍 {escape(restaurant.get('location') or 'Unknown')}</p>
-            <p class="meta">'''
-
-        if restaurant.get('cuisine'):
-            html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant["cuisine"])}</span>'
-
-        status_class = restaurant.get('visit_status', 'want_to_visit')
-        status_text = "Visited" if status_class == "visited" else "Wishlist"
-        html += f' <span class="status {status_class}">{status_text}</span>'
-
-        if restaurant.get('rating'):
-            html += f' <span class="rating">{"★" * restaurant["rating"]}</span>'
-
-        html += '</p></div>'
-    html += '</div>'
-
-    html += html_footer()
-
-    with open(os.path.join(output_dir, "restaurants.html"), 'w') as f:
-        f.write(html)
-
-
-def generate_price_ranges_page(restaurants, price_ranges_index, output_dir):
-    """Generate price ranges overview page."""
-    html = html_header("By Price Range", [("Price Ranges", None)])
-    html += '<p class="subtitle">Browse restaurants by price range</p>'
-
-    for price_range in ['$', '$$', '$$$', '$$$$']:
-        if price_range not in price_ranges_index:
-            continue
-
-        count = len(price_ranges_index[price_range])
-        html += f'<h2 style="margin-top: 2rem;">{price_range} ({count} restaurants)</h2>'
-        html += '<div class="restaurant-grid">'
-
-        for restaurant in sorted(price_ranges_index[price_range], key=lambda r: r['restaurant_name'].lower()):
-            slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-            cuisine_color = get_cuisine_color(restaurant.get('cuisine'))
-
-            html += f'''<div class="restaurant-card">
-                <h3><a href="restaurants/{slug}.html">{escape(restaurant['restaurant_name'])}</a></h3>
-                <p class="location">📍 {escape(restaurant.get('location') or 'Unknown')}</p>
-                <p class="meta">'''
-
-            if restaurant.get('cuisine'):
-                html += f'<span class="cuisine-badge" style="background:{cuisine_color};">{escape(restaurant["cuisine"])}</span>'
-
-            if restaurant.get('rating'):
-                html += f' <span class="rating">{"★" * restaurant["rating"]}</span>'
-
-            html += '</p></div>'
-
-        html += '</div>'
-
-    html += html_footer()
-
-    with open(os.path.join(output_dir, "price-ranges.html"), 'w') as f:
-        f.write(html)
-
-
-def generate_index(restaurants, cuisines_count, locations_count, categories_count, output_dir):
-    """Generate main index page with statistics dashboard."""
-    html = html_header("Paul's Restaurants")
-    html += '<p class="subtitle">A personal collection of dining experiences</p>'
-
-    visited_restaurants = [r for r in restaurants if r.get('visit_status') == 'visited']
-    wishlist_restaurants = [r for r in restaurants if r.get('visit_status') == 'want_to_visit']
-    rated_restaurants = [r for r in visited_restaurants if r.get('rating')]
-    avg_rating = sum(r['rating'] for r in rated_restaurants) / len(rated_restaurants) if rated_restaurants else 0
-
-    # Get most common cuisine
-    cuisine_counts = defaultdict(int)
-    for r in restaurants:
-        if r.get('cuisine'):
-            cuisine_counts[r['cuisine']] += 1
-    most_common_cuisine = max(cuisine_counts.items(), key=lambda x: x[1])[0] if cuisine_counts else "N/A"
-
-    # Get unique locations count
-    unique_locations = len(set(r.get('location') for r in restaurants if r.get('location')))
-
-    html += f'''<div class="stats">
-        <div class="stat"><div class="stat-value">{len(restaurants)}</div><div class="stat-label">Restaurants</div></div>
-        <div class="stat"><div class="stat-value">{len(visited_restaurants)}</div><div class="stat-label">Visited</div></div>
-        <div class="stat"><div class="stat-value">{len(wishlist_restaurants)}</div><div class="stat-label">Wishlist</div></div>
-        <div class="stat"><div class="stat-value">{avg_rating:.1f}</div><div class="stat-label">Avg Rating</div></div>
-        <div class="stat"><div class="stat-value">{unique_locations}</div><div class="stat-label">Locations</div></div>
-    </div>'''
-
-    html += '<div class="nav-sections">'
-
-    html += f'''<div class="nav-section">
-        <h3>🍽️ Browse</h3>
-        <ul>
-            <li><a href="restaurants.html">All Restaurants ({len(restaurants)})</a></li>
-            <li><a href="timeline.html">Timeline View</a></li>
-            <li><a href="cuisines.html">By Cuisine ({cuisines_count})</a></li>
-            <li><a href="locations.html">By Location ({locations_count})</a></li>
-            <li><a href="categories.html">By Category ({categories_count})</a></li>
-            <li><a href="price-ranges.html">By Price Range</a></li>
-        </ul>
-    </div>'''
-
-    # Recently added
-    recent = sorted(restaurants, key=lambda r: r.get('date_added', ''), reverse=True)[:5]
-    if recent:
-        html += '<div class="nav-section"><h3>🕐 Recently Added</h3><ul>'
-        for restaurant in recent:
-            slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-            html += f'<li><a href="restaurants/{slug}.html">{escape(restaurant["restaurant_name"])}</a></li>'
-        html += '</ul></div>'
-
-    # Top rated
-    top_rated = sorted(rated_restaurants, key=lambda r: r['rating'], reverse=True)[:5]
-    if top_rated:
-        html += '<div class="nav-section"><h3>⭐ Top Rated</h3><ul>'
-        for restaurant in top_rated:
-            slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-            html += f'<li><a href="restaurants/{slug}.html">{escape(restaurant["restaurant_name"])}</a> ({restaurant["rating"]}/10)</li>'
-        html += '</ul></div>'
-
-    # Wishlist
-    if wishlist_restaurants:
-        html += '<div class="nav-section"><h3>📌 Want to Visit</h3><ul>'
-        for restaurant in wishlist_restaurants[:5]:
-            slug = f"restaurant-{restaurant['id']}-{slugify(restaurant['restaurant_name'])}"
-            html += f'<li><a href="restaurants/{slug}.html">{escape(restaurant["restaurant_name"])}</a></li>'
-        html += '</ul></div>'
-
-    html += '</div>'
-    html += html_footer()
-
-    with open(os.path.join(output_dir, "index.html"), 'w') as f:
-        f.write(html)
-
-
-def generate_site(force=False):
-    """Generate the complete static site."""
-    # Check if regeneration needed
+def generate_site():
+    print("Generating restaurants SPA...")
+    
     if not os.path.exists(DB_PATH):
         print(f"Error: Database not found at {DB_PATH}")
-        print("Run 'python restaurant_tracker.py add' to add your first restaurant.")
-        return False
-
-    current_hash = get_db_hash(DB_PATH)
-    state = load_state()
-
-    if not force and state.get('db_hash') == current_hash:
-        print("Database unchanged. Use --force to regenerate anyway.")
-        return True
-
-    print("Generating site...")
-
-    # Create output directory
+        return
+    
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    os.makedirs(os.path.join(OUTPUT_DIR, "restaurants"), exist_ok=True)
-    os.makedirs(os.path.join(OUTPUT_DIR, "cuisines"), exist_ok=True)
-    os.makedirs(os.path.join(OUTPUT_DIR, "locations"), exist_ok=True)
-    os.makedirs(os.path.join(OUTPUT_DIR, "categories"), exist_ok=True)
-
-    # Get all restaurants
+    
     restaurants = get_all_restaurants(DB_PATH)
     print(f"Found {len(restaurants)} restaurants")
-
-    # Generate individual restaurant pages
-    for restaurant in restaurants:
-        generate_restaurant_page(restaurant, OUTPUT_DIR)
-    print(f"Generated {len(restaurants)} restaurant pages")
-
-    # Build indexes
-    cuisines_index = defaultdict(list)
-    locations_index = defaultdict(list)
-    categories_index = defaultdict(list)
-    price_ranges_index = defaultdict(list)
-
-    for restaurant in restaurants:
-        if restaurant.get('cuisine'):
-            cuisines_index[restaurant['cuisine']].append(restaurant)
-        if restaurant.get('location'):
-            locations_index[restaurant['location']].append(restaurant)
-        if restaurant.get('price_range'):
-            price_ranges_index[restaurant['price_range']].append(restaurant)
-        for cat in restaurant['llm_categories_list'] + restaurant['user_categories_list']:
-            if cat:
-                categories_index[cat].append(restaurant)
-
-    # Generate cuisine pages
-    cuisine_items = []
-    for cuisine, cuisine_restaurants in cuisines_index.items():
-        slug = slugify(cuisine)
-        filepath = os.path.join(OUTPUT_DIR, "cuisines", f"{slug}.html")
-        generate_group_page(cuisine, cuisine_restaurants, filepath, [("Cuisines", "cuisines.html"), (cuisine, None)], base="../")
-        cuisine_items.append((cuisine, f"cuisines/{slug}.html", len(cuisine_restaurants)))
-
-    generate_list_page("Cuisines", cuisine_items,
-                      os.path.join(OUTPUT_DIR, "cuisines.html"),
-                      [("Cuisines", None)],
-                      f"{len(cuisines_index)} cuisines")
-    print(f"Generated {len(cuisines_index)} cuisine pages")
-
-    # Generate location pages
-    location_items = []
-    for location, location_restaurants in locations_index.items():
-        slug = slugify(location)
-        filepath = os.path.join(OUTPUT_DIR, "locations", f"{slug}.html")
-        generate_group_page(location, location_restaurants, filepath, [("Locations", "locations.html"), (location, None)], base="../")
-        location_items.append((location, f"locations/{slug}.html", len(location_restaurants)))
-
-    generate_list_page("Locations", location_items,
-                      os.path.join(OUTPUT_DIR, "locations.html"),
-                      [("Locations", None)],
-                      f"{len(locations_index)} locations")
-    print(f"Generated {len(locations_index)} location pages")
-
-    # Generate category pages
-    category_items = []
-    for cat, cat_restaurants in categories_index.items():
-        slug = slugify(cat)
-        filepath = os.path.join(OUTPUT_DIR, "categories", f"{slug}.html")
-        generate_group_page(cat, cat_restaurants, filepath, [("Categories", "categories.html"), (cat, None)], base="../")
-        category_items.append((cat, f"categories/{slug}.html", len(cat_restaurants)))
-
-    generate_list_page("Categories", category_items,
-                      os.path.join(OUTPUT_DIR, "categories.html"),
-                      [("Categories", None)],
-                      f"{len(categories_index)} categories")
-    print(f"Generated {len(categories_index)} category pages")
-
-    # Generate price ranges page
-    generate_price_ranges_page(restaurants, price_ranges_index, OUTPUT_DIR)
-    print("Generated price ranges page")
-
-    # Generate timeline view
-    generate_timeline(restaurants, OUTPUT_DIR)
-    print("Generated timeline view")
-
-    # Generate all restaurants page
-    generate_restaurants_index(restaurants, OUTPUT_DIR)
-
-    # Generate main index
-    generate_index(restaurants, len(cuisines_index), len(locations_index), len(categories_index), OUTPUT_DIR)
-
-    # Save state
-    save_state({'db_hash': current_hash, 'generated_at': datetime.now().isoformat()})
-
-    print(f"\n✓ Site generated in '{OUTPUT_DIR}/'")
-    print(f"  Open {OUTPUT_DIR}/index.html to view")
-
-    return True
+    
+    data = generate_data_json(restaurants)
+    with open(os.path.join(OUTPUT_DIR, 'data.json'), 'w') as f:
+        json.dump(data, f)
+    print("Generated data.json")
+    
+    with open(os.path.join(OUTPUT_DIR, 'index.html'), 'w') as f:
+        f.write(generate_html())
+    print("Generated index.html")
+    
+    print(f"\n✓ Site generated in '{OUTPUT_DIR}/' (2 files)")
 
 
 if __name__ == "__main__":
-    force = "--force" in sys.argv
-    success = generate_site(force=force)
-    sys.exit(0 if success else 1)
+    generate_site()
