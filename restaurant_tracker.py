@@ -33,16 +33,17 @@ def get_managers():
     """Initialize and return database, LLM provider, and restaurant manager."""
     config = load_config()
 
-    # Validate API key
+    db = Database(config['database']['path'])
+
+    # Only validate API key if auto_enrich is enabled or for commands that need LLM
     provider_name = config['llm']['provider']
     api_key_field = f"{provider_name}_api_key"
+    has_api_key = config['llm'].get(api_key_field) and config['llm'][api_key_field] != ""
 
-    if not config['llm'].get(api_key_field) or config['llm'][api_key_field] == "":
-        click.echo(f"Error: Please configure your {provider_name.upper()} API key in config.yaml", err=True)
-        raise click.Abort()
+    llm_provider = None
+    if has_api_key:
+        llm_provider = get_provider(config)
 
-    db = Database(config['database']['path'])
-    llm_provider = get_provider(config)
     restaurant_manager = RestaurantManager(db, llm_provider, config)
 
     return config, db, llm_provider, restaurant_manager
@@ -60,6 +61,11 @@ def cli():
 def scan(directory):
     """Scan directories for menu/receipt images and extract information."""
     config, db, llm_provider, restaurant_manager = get_managers()
+
+    if llm_provider is None:
+        click.echo("Error: LLM provider not configured. Please add an API key in config.yaml", err=True)
+        raise click.Abort()
+
     image_processor = ImageProcessor(config, db)
 
     directories = []
@@ -368,6 +374,10 @@ def update(restaurant_id, rating, notes, cuisine, date_visited, new_status):
 def enrich(restaurant_identifier, force):
     """Enrich a restaurant with detailed metadata from LLM."""
     config, db, llm_provider, restaurant_manager = get_managers()
+
+    if llm_provider is None:
+        click.echo("Error: LLM provider not configured. Please add an API key in config.yaml", err=True)
+        raise click.Abort()
 
     # Try to parse as ID first
     restaurant = None

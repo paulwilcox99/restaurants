@@ -58,10 +58,10 @@ class RestaurantManager:
         # Add the restaurant
         restaurant_id = self.db.add_restaurant(restaurant_data)
 
-        # Auto-enrich if enabled
+        # Auto-enrich if enabled and LLM provider is available
         should_enrich = auto_enrich if auto_enrich is not None else self.config['settings'].get('auto_enrich', True)
 
-        if should_enrich:
+        if should_enrich and self.llm_provider:
             try:
                 self.enrich_restaurant(restaurant_id, force=False)
             except Exception as e:
@@ -75,6 +75,9 @@ class RestaurantManager:
         If force=False, only fetch fields that are empty/null.
         If force=True, re-fetch all fields.
         """
+        if not self.llm_provider:
+            raise ValueError("LLM provider not configured. Cannot enrich without API key.")
+
         restaurant = self.db.get_restaurant(restaurant_id)
         if not restaurant:
             raise ValueError(f"Restaurant with ID {restaurant_id} not found")
