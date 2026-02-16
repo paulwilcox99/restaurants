@@ -1,0 +1,45 @@
+llm:
+  provider: "openai"  # Options: openai, anthropic, google
+  openai_api_key: ""
+  anthropic_api_key: ""
+  google_api_key: ""
+  model:
+    openai: "gpt-4o"
+    anthropic: "claude-3-5-sonnet-20241022"
+    google: "gemini-2.0-flash-exp"
+
+database:
+  path: "restaurants.db"
+
+directories:
+  restaurants_visited: "restaurants_visited"
+  restaurants_wishlist: "restaurants_wishlist"
+
+settings:
+  auto_enrich: true
+  image_extensions: [".jpg", ".jpeg", ".png", ".webp"]
+  predefined_cuisines:
+    - "Italian"
+    - "Japanese"
+    - "Chinese"
+    - "Mexican"
+    - "Indian"
+    - "Thai"
+    - "French"
+    - "American"
+    - "Mediterranean"
+    - "Korean"
+    - "Vietnamese"
+    - "Steakhouse"
+    - "Seafood"
+    - "BBQ"
+    - "Pizza"
+    - "Sushi"
+    - "Fusion"
+  user_categories:
+    - "date night"
+    - "business lunch"
+    - "family-friendly"
+    - "special occasions"
+    - "quick bite"
+    - "weekend brunch"
